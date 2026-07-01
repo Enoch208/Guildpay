@@ -13,6 +13,8 @@
 
 A guild completes **KYB**, receives sponsor and prize money into a **treasury**, holds **USD + USDC**, and pays out winnings to **players** — and every money movement settles on **actual Dakota rails**, not a mock. The guild is a Dakota **business customer**; players are **payout recipients**. The polished product flow and the contest verification bar are the *same flow*.
 
+**[ ▶ Watch the demo ↗ ](https://drive.google.com/file/d/13Tq8oMHcLlt_tkjE2NwTxTql00oM846i/view?usp=drivesdk)** &nbsp;·&nbsp; **[ Live demo ↗ ](https://guildpayz.xyz)**
+
 **[ Features ↗ ](#what-it-does)** &nbsp;·&nbsp; **[ Architecture ↗ ](#architecture)** &nbsp;·&nbsp; **[ The money flow ↗ ](#the-money-flow-the-verified-recipe)** &nbsp;·&nbsp; **[ Run it locally ↗ ](#run-it-locally)**
 
 </div>
