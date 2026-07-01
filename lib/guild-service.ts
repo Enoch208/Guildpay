@@ -14,18 +14,18 @@ import { listLedger, updateLedgerStatusByTxId } from "@/lib/db/ledger";
 export async function refreshKyb(client: DakotaClient, guild: Guild): Promise<Guild> {
   const status = await getKybStatus(client, guild.customerId);
   if (status !== guild.kybStatus) {
-    updateGuild(guild.id, { kybStatus: status });
+    await updateGuild(guild.id, { kybStatus: status });
   }
-  let current = findGuildById(guild.id)!;
+  let current = (await findGuildById(guild.id))!;
 
   if (status === "active" && !current.walletId) {
     const t = await provisionTreasury(client, guild.customerId);
-    updateGuild(guild.id, {
+    await updateGuild(guild.id, {
       walletId: t.walletId,
       walletAddress: t.walletAddress,
       usdAccountId: t.usdAccountId,
     });
-    current = findGuildById(guild.id)!;
+    current = (await findGuildById(guild.id))!;
   }
   return current;
 }
@@ -42,7 +42,8 @@ export async function reconcilePendingPayouts(
   client: DakotaClient,
   guildId: string,
 ): Promise<void> {
-  const pending = listLedger(guildId).filter(
+  const entries = await listLedger(guildId);
+  const pending = entries.filter(
     (e) => e.kind === "payout" && e.status === "pending" && e.txId,
   );
   await Promise.all(
@@ -50,9 +51,9 @@ export async function reconcilePendingPayouts(
       try {
         const view = await getPayoutStatus(client, e.txId!);
         if (view.status === "completed") {
-          updateLedgerStatusByTxId(e.txId!, "completed");
+          await updateLedgerStatusByTxId(e.txId!, "completed");
         } else if (TERMINAL_FAIL.includes(view.status)) {
-          updateLedgerStatusByTxId(e.txId!, "failed");
+          await updateLedgerStatusByTxId(e.txId!, "failed");
         }
       } catch {
         // best-effort — leave it pending, we'll retry on the next load

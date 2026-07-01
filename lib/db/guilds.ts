@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { getDb } from "./index";
+import type { Row } from "@libsql/client";
+import { db } from "./index";
 
 export type Guild = {
   id: string;
@@ -16,49 +17,34 @@ export type Guild = {
   createdAt: number;
 };
 
-type Row = {
-  id: string;
-  email: string;
-  password_hash: string;
-  name: string;
-  customer_id: string;
-  application_id: string;
-  kyb_status: string;
-  wallet_id: string | null;
-  wallet_address: string | null;
-  usd_account_id: string | null;
-  created_at: number;
-};
-
 const toGuild = (r: Row): Guild => ({
-  id: r.id,
-  email: r.email,
-  passwordHash: r.password_hash,
-  name: r.name,
-  customerId: r.customer_id,
-  applicationId: r.application_id,
-  kybStatus: r.kyb_status,
-  walletId: r.wallet_id,
-  walletAddress: r.wallet_address,
-  usdAccountId: r.usd_account_id,
-  createdAt: r.created_at,
+  id: r.id as string,
+  email: r.email as string,
+  passwordHash: r.password_hash as string,
+  name: r.name as string,
+  customerId: r.customer_id as string,
+  applicationId: r.application_id as string,
+  kybStatus: r.kyb_status as string,
+  walletId: (r.wallet_id as string | null) ?? null,
+  walletAddress: (r.wallet_address as string | null) ?? null,
+  usdAccountId: (r.usd_account_id as string | null) ?? null,
+  createdAt: Number(r.created_at),
 });
 
-export function createGuild(input: {
+export async function createGuild(input: {
   email: string;
   passwordHash: string;
   name: string;
   customerId: string;
   applicationId: string;
   kybStatus: string;
-}): Guild {
+}): Promise<Guild> {
   const id = randomUUID();
-  getDb()
-    .prepare(
-      `INSERT INTO guilds (id, email, password_hash, name, customer_id, application_id, kyb_status, wallet_id, wallet_address, usd_account_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`,
-    )
-    .run(
+  const c = await db();
+  await c.execute({
+    sql: `INSERT INTO guilds (id, email, password_hash, name, customer_id, application_id, kyb_status, wallet_id, wallet_address, usd_account_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?)`,
+    args: [
       id,
       input.email.toLowerCase(),
       input.passwordHash,
@@ -67,30 +53,32 @@ export function createGuild(input: {
       input.applicationId,
       input.kybStatus,
       Date.now(),
-    );
-  return findGuildById(id)!;
+    ],
+  });
+  return (await findGuildById(id))!;
 }
 
-export function findGuildByEmail(email: string): Guild | undefined {
-  const r = getDb()
-    .prepare(`SELECT * FROM guilds WHERE email = ?`)
-    .get(email.toLowerCase()) as Row | undefined;
-  return r && toGuild(r);
+export async function findGuildByEmail(email: string): Promise<Guild | undefined> {
+  const c = await db();
+  const res = await c.execute({
+    sql: `SELECT * FROM guilds WHERE email = ?`,
+    args: [email.toLowerCase()],
+  });
+  return res.rows[0] ? toGuild(res.rows[0]) : undefined;
 }
 
-export function findGuildById(id: string): Guild | undefined {
-  const r = getDb().prepare(`SELECT * FROM guilds WHERE id = ?`).get(id) as
-    | Row
-    | undefined;
-  return r && toGuild(r);
+export async function findGuildById(id: string): Promise<Guild | undefined> {
+  const c = await db();
+  const res = await c.execute({ sql: `SELECT * FROM guilds WHERE id = ?`, args: [id] });
+  return res.rows[0] ? toGuild(res.rows[0]) : undefined;
 }
 
-export function updateGuild(
+export async function updateGuild(
   id: string,
   patch: Partial<
     Pick<Guild, "kybStatus" | "walletId" | "walletAddress" | "usdAccountId">
   >,
-): void {
+): Promise<void> {
   const cols: Record<string, string> = {
     kybStatus: "kyb_status",
     walletId: "wallet_id",
@@ -98,17 +86,16 @@ export function updateGuild(
     usdAccountId: "usd_account_id",
   };
   const sets: string[] = [];
-  const vals: unknown[] = [];
+  const args: (string | null)[] = [];
   for (const [key, col] of Object.entries(cols)) {
     const v = patch[key as keyof typeof patch];
     if (v !== undefined) {
       sets.push(`${col} = ?`);
-      vals.push(v);
+      args.push(v);
     }
   }
   if (!sets.length) return;
-  vals.push(id);
-  getDb()
-    .prepare(`UPDATE guilds SET ${sets.join(", ")} WHERE id = ?`)
-    .run(...vals);
+  args.push(id);
+  const c = await db();
+  await c.execute({ sql: `UPDATE guilds SET ${sets.join(", ")} WHERE id = ?`, args });
 }

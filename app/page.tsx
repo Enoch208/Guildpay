@@ -16,7 +16,7 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const session = await getSession();
-  const guild = session.guildId ? findGuildById(session.guildId) : undefined;
+  const guild = session.guildId ? await findGuildById(session.guildId) : undefined;
   const loggedIn = Boolean(guild && guild.kybStatus === "active");
 
   return (

@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { getDb } from "./index";
+import type { Row } from "@libsql/client";
+import { db } from "./index";
 
 export type LedgerKind = "deposit" | "payout";
 export type LedgerStatus = "pending" | "confirmed" | "completed" | "failed";
@@ -17,28 +18,16 @@ export type LedgerEntry = {
   createdAt: number;
 };
 
-type Row = {
-  id: string;
-  guild_id: string;
-  kind: LedgerKind;
-  amount: string;
-  currency: string;
-  tx_id: string | null;
-  status: LedgerStatus;
-  reference: string | null;
-  created_at: number;
-};
-
 const toEntry = (r: Row): LedgerEntry => ({
-  id: r.id,
-  guildId: r.guild_id,
-  kind: r.kind,
-  amount: r.amount,
-  currency: r.currency,
-  txId: r.tx_id,
-  status: r.status,
-  reference: r.reference,
-  createdAt: r.created_at,
+  id: r.id as string,
+  guildId: r.guild_id as string,
+  kind: r.kind as LedgerKind,
+  amount: r.amount as string,
+  currency: r.currency as string,
+  txId: (r.tx_id as string | null) ?? null,
+  status: r.status as LedgerStatus,
+  reference: (r.reference as string | null) ?? null,
+  createdAt: Number(r.created_at),
 });
 
 /** Statuses that represent settled money and therefore affect the balance. */
@@ -47,7 +36,7 @@ const SETTLED: LedgerStatus[] = ["confirmed", "completed"];
 const toCents = (amount: string): number => Math.round(Number(amount) * 100);
 const fromCents = (cents: number): string => (cents / 100).toFixed(2);
 
-export function addLedgerEntry(input: {
+export async function addLedgerEntry(input: {
   guildId: string;
   kind: LedgerKind;
   amount: string;
@@ -55,14 +44,13 @@ export function addLedgerEntry(input: {
   txId?: string | null;
   status: LedgerStatus;
   reference?: string | null;
-}): LedgerEntry {
+}): Promise<LedgerEntry> {
   const id = randomUUID();
-  getDb()
-    .prepare(
-      `INSERT INTO ledger_entries (id, guild_id, kind, amount, currency, tx_id, status, reference, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
+  const c = await db();
+  await c.execute({
+    sql: `INSERT INTO ledger_entries (id, guild_id, kind, amount, currency, tx_id, status, reference, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
       id,
       input.guildId,
       input.kind,
@@ -72,37 +60,35 @@ export function addLedgerEntry(input: {
       input.status,
       input.reference ?? null,
       Date.now(),
-    );
-  return getEntryById(id)!;
+    ],
+  });
+  return (await getEntryById(id))!;
 }
 
-export function getEntryById(id: string): LedgerEntry | undefined {
-  const r = getDb()
-    .prepare(`SELECT * FROM ledger_entries WHERE id = ?`)
-    .get(id) as Row | undefined;
-  return r && toEntry(r);
+export async function getEntryById(id: string): Promise<LedgerEntry | undefined> {
+  const c = await db();
+  const res = await c.execute({ sql: `SELECT * FROM ledger_entries WHERE id = ?`, args: [id] });
+  return res.rows[0] ? toEntry(res.rows[0]) : undefined;
 }
 
-export function updateLedgerStatus(id: string, status: LedgerStatus): void {
-  getDb()
-    .prepare(`UPDATE ledger_entries SET status = ? WHERE id = ?`)
-    .run(status, id);
+export async function updateLedgerStatus(id: string, status: LedgerStatus): Promise<void> {
+  const c = await db();
+  await c.execute({ sql: `UPDATE ledger_entries SET status = ? WHERE id = ?`, args: [status, id] });
 }
 
 /** Mark the ledger entry backing a given Dakota tx (used when polling settles it). */
-export function updateLedgerStatusByTxId(txId: string, status: LedgerStatus): void {
-  getDb()
-    .prepare(`UPDATE ledger_entries SET status = ? WHERE tx_id = ?`)
-    .run(status, txId);
+export async function updateLedgerStatusByTxId(txId: string, status: LedgerStatus): Promise<void> {
+  const c = await db();
+  await c.execute({ sql: `UPDATE ledger_entries SET status = ? WHERE tx_id = ?`, args: [status, txId] });
 }
 
-export function listLedger(guildId: string): LedgerEntry[] {
-  const rows = getDb()
-    .prepare(
-      `SELECT * FROM ledger_entries WHERE guild_id = ? ORDER BY rowid DESC`,
-    )
-    .all(guildId) as Row[];
-  return rows.map(toEntry);
+export async function listLedger(guildId: string): Promise<LedgerEntry[]> {
+  const c = await db();
+  const res = await c.execute({
+    sql: `SELECT * FROM ledger_entries WHERE guild_id = ? ORDER BY rowid DESC`,
+    args: [guildId],
+  });
+  return res.rows.map(toEntry);
 }
 
 /**
@@ -110,16 +96,18 @@ export function listLedger(guildId: string): LedgerEntry[] {
  * `wallets.getBalances()` is Privy-gated and returns $0, so we track it here).
  * USDC ≈ USD 1:1, so both figures are the same number.
  */
-export function getBalance(guildId: string): { usdc: string; usd: string } {
-  const rows = getDb()
-    .prepare(
-      `SELECT kind, amount, status FROM ledger_entries WHERE guild_id = ?`,
-    )
-    .all(guildId) as Pick<Row, "kind" | "amount" | "status">[];
+export async function getBalance(guildId: string): Promise<{ usdc: string; usd: string }> {
+  const c = await db();
+  const res = await c.execute({
+    sql: `SELECT kind, amount, status FROM ledger_entries WHERE guild_id = ?`,
+    args: [guildId],
+  });
   let cents = 0;
-  for (const r of rows) {
-    if (!SETTLED.includes(r.status)) continue;
-    cents += r.kind === "deposit" ? toCents(r.amount) : -toCents(r.amount);
+  for (const r of res.rows) {
+    const status = r.status as LedgerStatus;
+    if (!SETTLED.includes(status)) continue;
+    const amt = toCents(r.amount as string);
+    cents += (r.kind as LedgerKind) === "deposit" ? amt : -amt;
   }
   const value = fromCents(cents);
   return { usdc: value, usd: value };

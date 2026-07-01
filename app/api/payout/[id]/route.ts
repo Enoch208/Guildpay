@@ -17,9 +17,9 @@ export async function GET(
     const view = await getPayoutStatus(getDakota(), id);
 
     if (view.status === "completed") {
-      updateLedgerStatusByTxId(id, "completed");
+      await updateLedgerStatusByTxId(id, "completed");
     } else if (TERMINAL_FAIL.includes(view.status)) {
-      updateLedgerStatusByTxId(id, "failed");
+      await updateLedgerStatusByTxId(id, "failed");
     }
 
     return ok(view);

@@ -40,8 +40,11 @@ export default async function DashboardPage() {
   // Self-heal any payouts that settled after the user left the payout page.
   await reconcilePendingPayouts(getDakota(), guild.id);
 
-  const balance = getBalance(guild.id);
-  const activity = listLedger(guild.id).slice(0, 8);
+  const [balance, allActivity] = await Promise.all([
+    getBalance(guild.id),
+    listLedger(guild.id),
+  ]);
+  const activity = allActivity.slice(0, 8);
 
   return (
     <>

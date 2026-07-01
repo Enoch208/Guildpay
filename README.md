@@ -67,7 +67,7 @@ flowchart LR
     B(["Browser"]) --> P["Next.js pages<br/>RSC + client forms"]
     P --> API["Route handlers · /api<br/>validate · session · KYB guard"]
     API --> DK["lib/dakota<br/>server-only · injected client"]
-    API --> DB[("better-sqlite3<br/>guilds + ledger")]
+    API --> DB[("libSQL / Turso<br/>guilds + ledger")]
     DK --> DAK[["Dakota sandbox rails"]]
     DAK -. "reconcile pending payouts<br/>on every dashboard load" .-> DB
     API -. "session cookie" .-> P
@@ -146,7 +146,7 @@ Everything money-related runs on Dakota's live sandbox. Nothing here is faked.
 | **Player payout** | Real one-off `USDC → USD` ACH transfer, funded and polled to `completed` (~60–90s on real rails). |
 | **Login / session** | `iron-session` encrypted cookies; sign-in gated on `kyb_status === 'active'`. |
 | **Compliance gate** | Pure amount-threshold policy enforced in-line before the transfer hits Dakota. |
-| **Persistence** | `better-sqlite3` — one `guilds` table + a ledger. Local file, single-instance (see [Deploying](#deploying)). |
+| **Persistence** | libSQL — one `guilds` table + a ledger. A local SQLite file in dev, a hosted **Turso** database in production (see [Deploying](#deploying)). |
 
 Verified end-to-end against the live sandbox: **onboard → KYB active → deposit settles → payout completes**, both headlessly (`npm run e2e`) and through the running app's HTTP layer.
 
@@ -174,7 +174,7 @@ Five screens on one premium "Soft Bento" design system — white / canvas-gray /
 - **App:** Next.js 16 (App Router, RSC, Turbopack), React 19, TypeScript (strict), Tailwind CSS v4 (CSS-first).
 - **Rails:** [`@dakota-xyz/ts-sdk`](https://github.com/dakota-xyz/dakota-ts-sdk) — server-only, behind a DI boundary.
 - **Auth:** `iron-session` encrypted cookies; `bcryptjs` password hashing.
-- **Persistence:** `better-sqlite3` — one `guilds` table + a ledger.
+- **Persistence:** libSQL (`@libsql/client`) — a local SQLite file in dev, hosted **Turso** in production.
 - **Validation:** `zod`. **UI:** Hugeicons, `clsx` + `tailwind-merge`.
 - **Tests:** Vitest — 40 unit tests + a live end-to-end script.
 
@@ -191,7 +191,7 @@ components/
   deposit-form · payout-form · copy-address
 lib/
   dakota/   # onboarding · treasury · payouts · client — server-only, DI client
-  db/       # better-sqlite3: guilds repo + ledger repo
+  db/       # libSQL (local file / Turso): guilds repo + ledger repo
   auth/     # iron-session sessions + KYB guards
   guild-service.ts   # KYB refresh + treasury provisioning + payout reconciliation
   compliance.ts · validation.ts · http.ts · format.ts
@@ -214,7 +214,9 @@ npm run dev                     # http://localhost:3000
 | ---------------- | -------- | ----------------------------------------------------------- |
 | `DAKOTA_API_KEY` | yes      | Your Dakota **sandbox** key (never exposed to the browser). |
 | `SESSION_SECRET` | yes      | ≥ 32-char secret for iron-session cookies.                  |
-| `DATABASE_PATH`  | no       | SQLite path (defaults to `./guildpay.db`).                  |
+| `DATABASE_PATH`  | no       | Local libSQL/SQLite file (defaults to `./guildpay.db`); ignored when Turso is set. |
+| `TURSO_DATABASE_URL` | no   | Hosted Turso DB URL for serverless/production (e.g. Vercel). |
+| `TURSO_AUTH_TOKEN`   | no   | Turso auth token (paired with `TURSO_DATABASE_URL`).         |
 
 ```bash
 # generate a session secret:
@@ -225,10 +227,21 @@ Then walk it: **onboard a guild (KYB → active) → log in → deposit → watc
 
 ## Deploying
 
-The whole app is server-side (Dakota SDK, iron-session, route handlers), so compute is easy anywhere. The one thing to plan for is **state**: Guildpay persists the guild ↔ customer mapping and the ledger in a local SQLite file.
+The whole app is server-side (Dakota SDK, iron-session, route handlers), so compute is easy anywhere. Persistence uses **libSQL**, which runs both as a local file and as a hosted **Turso** database — so it works on serverless out of the box.
 
-- **Persistent-filesystem hosts (recommended, zero changes):** Railway, Render, Fly.io, or any VM / container with a mounted volume. `better-sqlite3` + the file works exactly as it does locally. Set `DAKOTA_API_KEY`, `SESSION_SECRET`, and a durable `DATABASE_PATH`.
-- **Vercel (needs one swap):** serverless functions have an **ephemeral, per-invocation** filesystem that isn't shared across instances — so a file-backed SQLite DB won't persist or stay consistent across requests. To ship on Vercel, replace the `lib/db/` layer with a serverless store: **Turso / libSQL** (closest to SQLite, near drop-in), **Vercel Postgres / Neon**, or **Vercel KV** for this tiny dataset. The data model is one table + a ledger, so it's a contained change behind `lib/db/`.
+**Vercel (recommended):**
+
+1. Create a Turso database and grab its URL + token:
+   ```bash
+   turso db create guildpay
+   turso db show guildpay --url          # -> TURSO_DATABASE_URL
+   turso db tokens create guildpay       # -> TURSO_AUTH_TOKEN
+   ```
+2. Import the repo at [vercel.com/new](https://vercel.com/new) — **Root Directory stays `./`** (the app is at the repo root); Next.js is auto-detected.
+3. Add env vars: `DAKOTA_API_KEY`, `SESSION_SECRET`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`.
+4. Deploy. The schema is created automatically on first request.
+
+**Persistent-filesystem hosts** (Railway, Render, Fly.io, a VM) also work with **zero config** — leave the Turso vars unset and the app writes a local libSQL file at `DATABASE_PATH`.
 
 Either way the Dakota integration, auth, and UI are untouched.
 

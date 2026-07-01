@@ -10,11 +10,11 @@ export async function GET() {
     const guild = await requireActiveGuild();
     // Reconcile any payouts that settled since the last load so activity is never stale.
     await reconcilePendingPayouts(getDakota(), guild.id);
-    return ok({
-      balance: getBalance(guild.id),
-      walletAddress: guild.walletAddress,
-      activity: listLedger(guild.id),
-    });
+    const [balance, activity] = await Promise.all([
+      getBalance(guild.id),
+      listLedger(guild.id),
+    ]);
+    return ok({ balance, walletAddress: guild.walletAddress, activity });
   } catch (e) {
     return jsonError(e);
   }

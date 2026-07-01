@@ -20,7 +20,8 @@ export async function POST(req: Request) {
     if (Number(input.amount) > SANDBOX_MAX_TRANSFER) {
       throw new ApiError(`Sandbox caps a single transfer at $${SANDBOX_MAX_TRANSFER}`, 422);
     }
-    if (Number(input.amount) > Number(getBalance(guild.id).usdc)) {
+    const balance = await getBalance(guild.id);
+    if (Number(input.amount) > Number(balance.usdc)) {
       throw new ApiError("Insufficient treasury balance", 422);
     }
 
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
       },
     });
 
-    addLedgerEntry({
+    await addLedgerEntry({
       guildId: guild.id,
       kind: "payout",
       amount: input.amount,
@@ -56,7 +57,7 @@ export async function POST(req: Request) {
 export async function GET() {
   try {
     const guild = await requireActiveGuild();
-    const payouts = listLedger(guild.id).filter((e) => e.kind === "payout");
+    const payouts = (await listLedger(guild.id)).filter((e) => e.kind === "payout");
     return ok({ payouts });
   } catch (e) {
     return jsonError(e);

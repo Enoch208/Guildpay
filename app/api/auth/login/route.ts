@@ -7,7 +7,7 @@ import { ApiError, jsonError, ok } from "@/lib/http";
 export async function POST(req: Request) {
   try {
     const { email, password } = loginSchema.parse(await req.json());
-    const guild = findGuildByEmail(email);
+    const guild = await findGuildByEmail(email);
     if (!guild || !(await verifyPassword(password, guild.passwordHash))) {
       throw new ApiError("Invalid email or password", 401);
     }

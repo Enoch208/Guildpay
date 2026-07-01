@@ -57,14 +57,12 @@ export function resolveGuard(
 
 export async function requireGuild(): Promise<Guild> {
   const s = await getSession();
-  return resolveGuard(s.guildId ? findGuildById(s.guildId) : undefined, {
-    requireActive: false,
-  });
+  const guild = s.guildId ? await findGuildById(s.guildId) : undefined;
+  return resolveGuard(guild, { requireActive: false });
 }
 
 export async function requireActiveGuild(): Promise<Guild> {
   const s = await getSession();
-  return resolveGuard(s.guildId ? findGuildById(s.guildId) : undefined, {
-    requireActive: true,
-  });
+  const guild = s.guildId ? await findGuildById(s.guildId) : undefined;
+  return resolveGuard(guild, { requireActive: true });
 }

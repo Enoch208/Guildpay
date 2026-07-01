@@ -19,10 +19,12 @@ export default async function DepositPage() {
     throw e;
   }
 
+  const balance = await getBalance(guild.id);
+
   return (
     <>
       <Topbar title="Deposit" guildName={guild.name} email={guild.email} />
-      <DepositForm walletAddress={guild.walletAddress} initialBalance={getBalance(guild.id)} />
+      <DepositForm walletAddress={guild.walletAddress} initialBalance={balance} />
     </>
   );
 }

@@ -19,10 +19,12 @@ export default async function PayoutPage() {
     throw e;
   }
 
+  const balance = await getBalance(guild.id);
+
   return (
     <>
       <Topbar title="Pay a player" guildName={guild.name} email={guild.email} />
-      <PayoutForm initialBalance={getBalance(guild.id)} />
+      <PayoutForm initialBalance={balance} />
     </>
   );
 }

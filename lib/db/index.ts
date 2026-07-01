@@ -1,45 +1,61 @@
 import "server-only";
-import Database from "better-sqlite3";
+import { createClient, type Client } from "@libsql/client";
 import { getServerEnv } from "@/lib/env";
 
-let db: Database.Database | undefined;
+let client: Client | undefined;
+let ready: Promise<unknown> | undefined;
 
-export function getDb(): Database.Database {
-  if (db) return db;
-  db = new Database(getServerEnv().dbPath);
-  db.pragma("journal_mode = WAL");
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS guilds (
-      id             TEXT PRIMARY KEY,
-      email          TEXT UNIQUE NOT NULL,
-      password_hash  TEXT NOT NULL,
-      name           TEXT NOT NULL,
-      customer_id    TEXT NOT NULL,
-      application_id TEXT NOT NULL,
-      kyb_status     TEXT NOT NULL,
-      wallet_id      TEXT,
-      wallet_address TEXT,
-      usd_account_id TEXT,
-      created_at     INTEGER NOT NULL
-    );
+const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS guilds (
+    id             TEXT PRIMARY KEY,
+    email          TEXT UNIQUE NOT NULL,
+    password_hash  TEXT NOT NULL,
+    name           TEXT NOT NULL,
+    customer_id    TEXT NOT NULL,
+    application_id TEXT NOT NULL,
+    kyb_status     TEXT NOT NULL,
+    wallet_id      TEXT,
+    wallet_address TEXT,
+    usd_account_id TEXT,
+    created_at     INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS ledger_entries (
+    id         TEXT PRIMARY KEY,
+    guild_id   TEXT NOT NULL,
+    kind       TEXT NOT NULL,
+    amount     TEXT NOT NULL,
+    currency   TEXT NOT NULL,
+    tx_id      TEXT,
+    status     TEXT NOT NULL,
+    reference  TEXT,
+    created_at INTEGER NOT NULL
+  );
+`;
 
-    CREATE TABLE IF NOT EXISTS ledger_entries (
-      id         TEXT PRIMARY KEY,
-      guild_id   TEXT NOT NULL,
-      kind       TEXT NOT NULL,       -- 'deposit' | 'payout'
-      amount     TEXT NOT NULL,       -- decimal string, USDC-equivalent
-      currency   TEXT NOT NULL,       -- 'USDC' | 'USD'
-      tx_id      TEXT,                -- backing Dakota transaction/movement id
-      status     TEXT NOT NULL,       -- 'pending' | 'confirmed' | 'completed' | 'failed'
-      reference  TEXT,
-      created_at INTEGER NOT NULL
-    );
-  `);
-  return db;
+function makeClient(): Client {
+  // Production/serverless (e.g. Vercel): a hosted Turso database.
+  const url = process.env.TURSO_DATABASE_URL;
+  if (url) {
+    return createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN });
+  }
+  // Local dev / tests: libSQL reads a plain SQLite file, or an in-memory db.
+  const path = getServerEnv().dbPath;
+  return createClient({ url: path === ":memory:" ? ":memory:" : `file:${path}` });
 }
 
-/** Test-only: drop the cached connection so the next getDb() opens a fresh db. */
+/** Get the libSQL client, ensuring the schema exists (idempotent, memoized). */
+export async function db(): Promise<Client> {
+  if (!client) {
+    client = makeClient();
+    ready = client.executeMultiple(SCHEMA);
+  }
+  await ready;
+  return client;
+}
+
+/** Test-only: drop the cached client so the next db() opens a fresh connection. */
 export function closeDb(): void {
-  db?.close();
-  db = undefined;
+  client?.close();
+  client = undefined;
+  ready = undefined;
 }

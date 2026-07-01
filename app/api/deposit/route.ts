@@ -20,7 +20,7 @@ export async function POST(req: Request) {
     }
 
     await simulateDeposit(getDakota(), { usdAccountId: guild.usdAccountId, amount });
-    addLedgerEntry({
+    await addLedgerEntry({
       guildId: guild.id,
       kind: "deposit",
       amount,
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       reference: "Sponsor deposit",
     });
 
-    return ok({ ok: true, balance: getBalance(guild.id) });
+    return ok({ ok: true, balance: await getBalance(guild.id) });
   } catch (e) {
     return jsonError(e);
   }

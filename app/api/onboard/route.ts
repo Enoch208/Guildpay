@@ -11,7 +11,7 @@ import { ApiError, jsonError, ok } from "@/lib/http";
 export async function POST(req: Request) {
   try {
     const input = onboardSchema.parse(await req.json());
-    if (findGuildByEmail(input.email)) {
+    if (await findGuildByEmail(input.email)) {
       throw new ApiError("That email is already registered", 409);
     }
 
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
     });
     await approveKyb(client, applicationId);
 
-    let guild = createGuild({
+    let guild = await createGuild({
       email: input.email,
       passwordHash: await hashPassword(input.password),
       name: input.guildName,
