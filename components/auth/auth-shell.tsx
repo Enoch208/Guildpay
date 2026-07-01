@@ -26,7 +26,7 @@ export function AuthShell({
   children,
   footer,
   imageSrc,
-  brand = "Rosterpay",
+  brand = "Guildpay",
 }: AuthShellProps) {
   return (
     <div className="flex-1 grid grid-cols-1 lg:grid-cols-2 rounded-[2rem] bg-white border border-gray-100 shadow-[inset_0_1px_0_0_rgba(255,255,255,1),0_30px_80px_-30px_rgba(0,0,0,0.18)] overflow-hidden">

@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 export function Logo({
   className,
   showWordmark = true,
-  name = "Rosterpay",
+  name = "Guildpay",
 }: {
   className?: string;
   showWordmark?: boolean;
